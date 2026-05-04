@@ -63,20 +63,29 @@ def _2b_detect_structure(df: pd.DataFrame, sheet_name: str) -> tuple:
     headers = df.iloc[4].tolist()
     data = df.iloc[6:].reset_index(drop=True)
     actual_cols = len(headers)
-    if actual_cols < 22:
+    # Minimum 17 — cols 0-16 are actual GST data.
+    # Cols 17-21 (IRN, Source, Remarks) are optional.
+    # Remarks (col 21) only exists if CA manually added it —
+    # which they won't when using AuditIQ as their reconciliation engine.
+    if actual_cols < 17:
         raise ValueError(
-            f"CRITICAL: Expected ≥22 columns, found {actual_cols}. "
+            f"CRITICAL: Expected ≥17 columns, found {actual_cols}. "
             "File may be wrong format or corrupted."
         )
     if actual_cols > 22:
         format_warnings.append(
-            f"FORMAT_WARNING: File has {actual_cols} columns, expected 22. Extra columns ignored."
+            f"FORMAT_WARNING: File has {actual_cols} columns, expected 21-22. Extra columns ignored."
         )
     return data, format_warnings
 
 
 # ── LAYER 3 ───────────────────────────────────────────────────
 def _2b_standardize_columns(df: pd.DataFrame) -> pd.DataFrame:
+    # Pad to 22 columns if optional columns are missing.
+    # Fresh portal download = 21 cols (no Remarks).
+    # ca_remarks_raw will be None → _map_ca_remark returns UNCLASSIFIED → correct.
+    while df.shape[1] < 22:
+        df[f"_pad_{df.shape[1]}"] = None
     df = df.iloc[:, :22].copy()
     df.columns = GSTR2B_SCHEMA
     df = df.drop(columns=[c for c in df.columns if str(c).startswith("Unnamed")], errors="ignore")
